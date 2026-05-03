@@ -2,62 +2,79 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Requests\ProfileUpdateRequest;
-use Illuminate\Contracts\Auth\MustVerifyEmail;
-use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Redirect;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
-use Inertia\Response;
 
 class ProfileController extends Controller
 {
     /**
-     * Display the user's profile form.
+     * Afficher le formulaire d'édition du profil
      */
-    public function edit(Request $request): Response
+    public function edit(Request $request)
     {
         return Inertia::render('Profile/Edit', [
-            'mustVerifyEmail' => $request->user() instanceof MustVerifyEmail,
-            'status' => session('status'),
+            'user' => $request->user(),
+            'success' => session('success'),
         ]);
     }
 
     /**
-     * Update the user's profile information.
+     * Mettre à jour le profil
      */
-    public function update(ProfileUpdateRequest $request): RedirectResponse
+    public function update(Request $request)
     {
-        $request->user()->fill($request->validated());
-
-        if ($request->user()->isDirty('email')) {
-            $request->user()->email_verified_at = null;
-        }
-
-        $request->user()->save();
-
-        return Redirect::route('profile.edit');
+        $user = $request->user();
+        
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => 'required|string|email|max:255|unique:users,email,' . $user->id,
+            'university' => 'nullable|string|max:255',
+            'study_year' => 'nullable|string|max:50',
+            'domain' => 'nullable|string|max:255',
+        ]);
+        
+        $user->update($validated);
+        
+        return redirect()->route('profile.edit')->with('success', '✅ Profil mis à jour avec succès !');
     }
-
+    
     /**
-     * Delete the user's account.
+     * Mettre à jour le mot de passe
      */
-    public function destroy(Request $request): RedirectResponse
+    public function updatePassword(Request $request)
+    {
+        $validated = $request->validate([
+            'current_password' => ['required', 'string', 'current_password'],
+            'password' => ['required', 'string', 'min:8', 'confirmed'],
+        ]);
+        
+        $request->user()->update([
+            'password' => Hash::make($validated['password']),
+        ]);
+        
+        return redirect()->route('profile.edit')->with('success', '🔒 Mot de passe mis à jour avec succès !');
+    }
+    
+    /**
+     * Supprimer le compte
+     */
+    public function destroy(Request $request)
     {
         $request->validate([
-            'password' => ['required', 'current_password'],
+            'password' => ['required', 'string', 'current_password'],
         ]);
-
+        
         $user = $request->user();
-
+        
         Auth::logout();
-
         $user->delete();
-
+        
         $request->session()->invalidate();
         $request->session()->regenerateToken();
-
-        return Redirect::to('/');
+        
+        return redirect('/')->with('success', 'Votre compte a été supprimé avec succès.');
     }
 }

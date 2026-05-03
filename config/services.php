@@ -34,5 +34,20 @@ return [
             'channel' => env('SLACK_BOT_USER_DEFAULT_CHANNEL'),
         ],
     ],
-
+    
+   'openai' => [
+        'api_key' => env('OPENAI_API_KEY'),
+        'model' => env('OPENAI_MODEL', 'gpt-5-mini'),
+    ],
+      'chunking' => [
+        'chunk_size' => env('CHUNK_SIZE', 2000),
+        'overlap' => env('CHUNK_OVERLAP', 200),
+        'max_chunks' => env('MAX_CHUNKS', 50),
+    ],
+    
+    'analysis' => [
+        'max_tokens_per_chunk' => env('MAX_TOKENS_PER_CHUNK', 1500),
+        'temperature' => env('ANALYSIS_TEMPERATURE', 0.2),
+        'min_confidence' => env('MIN_CONFIDENCE', 60),
+    ],
 ];

@@ -1,3 +1,21 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Poppins:wght@400;500;600;700;800&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+    body {
+        @apply bg-presento-dark text-white font-sans;
+    }
+}
+
+@layer components {
+    .gradient-text {
+        @apply bg-gradient-to-r from-presento-blue to-presento-violet bg-clip-text text-transparent;
+    }
+    
+    .glow-effect {
+        @apply transition-all duration-300 hover:shadow-lg hover:shadow-presento-blue/25;
+    }
+}
