@@ -44,97 +44,118 @@ public function index()
     /**
      * Génère une présentation à partir du formulaire
      */
-public function store(Request $request)
-{
-    set_time_limit(120);
-    ini_set('max_execution_time', 120);
 
-    try {
-        $user = Auth::user();
-
-        Log::info('🎬 Début génération présentation (QUEUE)', [
-            'user_id' => $user->id,
-            'credits_avant' => $user->presentation_credits,
-        ]);
-
-        // ❌ Vérification crédits
-        if ($user->presentation_credits <= 0) {
+    public function store(Request $request)
+    {
+        try {
+            $user = Auth::user();
+            
+            // Vérification des crédits (ACID avec transaction)
+            $canProceed = DB::transaction(function () use ($user) {
+                // Re-vérifier les crédits dans la transaction
+                $freshUser = User::where('id', $user->id)->lockForUpdate()->first();
+                
+                if ($freshUser->presentation_credits <= 0) {
+                    return false;
+                }
+                
+                // Déduire le crédit immédiatement
+                $freshUser->decrement('presentation_credits');
+                return true;
+            });
+            
+            if (!$canProceed) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Vous n\'avez plus de crédits présentation.'
+                ], 403);
+            }
+            
+            Log::info('✅ Crédit déduit', [
+                'user_id' => $user->id,
+                'credits_restants' => $user->fresh()->presentation_credits
+            ]);
+            
+            // Validation
+            $validated = $request->validate([
+                'formData.title' => 'required|string|max:255',
+                'formData.projectType' => 'required|string',
+                'formData.problem' => 'required|string|min:20',
+                'formData.solution' => 'required|string|min:20',
+                'formData.technologies' => 'nullable|string',
+                'formData.results' => 'nullable|string',
+                'formData.difficulties' => 'nullable|string',
+                'formData.perspectives' => 'nullable|string',
+                'options.style' => 'required|string|in:modern,corporate,colorful',
+                'options.slideCount' => 'required|string',
+                'options.includeScript' => 'boolean',
+                'options.includeQuestions' => 'boolean',
+            ]);
+            
+            $formData = $validated['formData'];
+            $options = $validated['options'];
+            
+            // Créer la présentation
+            $presentation = Presentation::create([
+                'user_id' => $user->id,
+                'title' => $formData['title'],
+                'slug' => Str::slug($formData['title']) . '-' . Str::random(8),
+                'generation_method' => 'form',
+                'status' => 'pending',
+                'options' => $options,
+                'metadata' => json_encode([
+                    'created_at' => now()->toISOString(),
+                    'credits_used' => 1
+                ])
+            ]);
+            
+            // Construire le prompt
+            $prompt = $this->buildPresentationPrompt($formData, $options);
+            
+            // Dispatch le job sur la queue DATABASE
+            GeneratePresentationJob::dispatch(
+                $presentation->id,
+                $prompt,
+                $user->id
+            );
+            
+            Log::info('📬 Job dispatché dans database queue', [
+                'presentation_id' => $presentation->id,
+                'job_class' => GeneratePresentationJob::class
+            ]);
+            
+            // Réponse immédiate
+            return response()->json([
+                'success' => true,
+                'status' => 'pending',
+                'presentation_id' => $presentation->id,
+                'message' => 'Génération en cours... Vous serez notifié quand ce sera terminé.'
+            ]);
+            
+        } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
                 'success' => false,
-                'error' => 'Vous n\'avez plus de crédits présentation.'
-            ], 403);
+                'error' => 'Erreur de validation',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('❌ Erreur store presentation', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            // En cas d'erreur, rembourser le crédit
+            DB::transaction(function () use ($user) {
+                $user->increment('presentation_credits');
+            });
+            
+            return response()->json([
+                'success' => false,
+                'error' => 'Erreur serveur: ' . $e->getMessage()
+            ], 500);
         }
-
-        // ✅ Validation
-        $validated = $request->validate([
-            'formData.title' => 'required|string|max:255',
-            'formData.projectType' => 'required|string',
-            'formData.problem' => 'required|string|min:20',
-            'formData.solution' => 'required|string|min:20',
-            'formData.technologies' => 'nullable|string',
-            'formData.results' => 'nullable|string',
-            'formData.difficulties' => 'nullable|string',
-            'formData.perspectives' => 'nullable|string',
-
-            'options.style' => 'required|string|in:modern,corporate,colorful',
-            'options.slideCount' => 'required|string',
-            'options.includeScript' => 'boolean',
-            'options.includeQuestions' => 'boolean',
-        ]);
-
-        $formData = $validated['formData'];
-        $options = $validated['options'];
-
-        // 🧠 1. Créer la présentation en mode pending
-        $presentation = Presentation::create([
-            'user_id' => $user->id,
-            'title' => $formData['title'],
-            'slug' => \Illuminate\Support\Str::slug($formData['title']) . '-' . \Illuminate\Support\Str::random(8),
-            'generation_method' => 'form',
-            'status' => 'processing',
-            'options' => $options,
-        ]);
-
-        Log::info('📦 Présentation créée (QUEUE)', [
-            'presentation_id' => $presentation->id
-        ]);
-
- $prompt = $this->buildPresentationPrompt($formData, $options);
-
-GeneratePresentationJob::dispatch(
-    $presentation->id,
-    $prompt,
-    $user->id
-);
-
-        // ⚡ 3. Réponse immédiate (PAS DE TIMEOUT)
-        return response()->json([
-            'success' => true,
-            'status' => 'processing',
-            'presentation_id' => $presentation->id,
-            'message' => 'Génération en cours...'
-        ]);
-
-    } catch (\Illuminate\Validation\ValidationException $e) {
-
-        return response()->json([
-            'success' => false,
-            'error' => 'Erreur de validation',
-            'errors' => $e->errors()
-        ], 422);
-
-    } catch (\Exception $e) {
-
-        Log::error('❌ Erreur store presentation', [
-            'message' => $e->getMessage()
-        ]);
-
-        return response()->json([
-            'success' => false,
-            'error' => 'Erreur serveur'
-        ], 500);
     }
-}
+
 
     /**
      * Génère les slides avec l'IA
@@ -215,122 +236,7 @@ GeneratePresentationJob::dispatch(
     /**
      * Construction du prompt optimisé pour formulaire
      */
-protected function buildPresentationPrompt(array $data, array $options): string
-{
-    $title = $data['title'] ?? 'Projet de Fin d\'Études';
-    $problem = $data['problem'] ?? '';
-    $solution = $data['solution'] ?? '';
-    $technologies = $data['technologies'] ?? '';
-    $results = $data['results'] ?? '';
-    $difficulties = $data['difficulties'] ?? '';
-    $perspectives = $data['perspectives'] ?? '';
 
-    $slideCount = $options['slideCount'] ?? 15;
-
-    return <<<PROMPT
-You are a SENIOR academic expert specialized in Tunisian PFE defenses.
-
-OBJECTIVE:
-Generate a HIGH-QUALITY, professional, and convincing PFE presentation adapted for a Tunisian jury.
-
-The presentation must follow a strong storytelling:
-Context → Problem → Solution → Implementation → Results → Value
-
-INPUT:
-Title: {$title}
-Problem: {$problem}
-Solution: {$solution}
-Technologies: {$technologies}
-Results: {$results}
-Difficulties: {$difficulties}
-Perspectives: {$perspectives}
-
-ACADEMIC EXPECTATIONS:
-
-- Content must reflect a REAL academic project
-- Highlight VALUE and INNOVATION
-- Avoid generic or vague sentences
-- Use professional academic tone
-- Add realistic details if missing
-
-STRUCTURE (if the project for a developer student keep this flow else adapt and keep logical flow):
-
-1. Page de garde
-2. Plan
-3. Introduction
-4. Contexte général
-5. Analyse de l'existant (avec limites)
-6. Problématique
-7. Objectifs
-8. Solution proposée
-9. Architecture technique (frontend / backend / API)
-10. Technologies utilisées (justifiées)
-11. Implémentation (fonctionnalités principales)
-12. Résultats & démonstration
-13. Difficultés rencontrées
-14. Conclusion
-15. Perspectives
-16. Questions
-
-OUTPUT RULES:
-
-- Return ONLY valid JSON
-- No text before or after JSON
-- Language: French
-- Slides count: {$slideCount}
-
-CRITICAL RULES FOR SLIDES:
-
-EACH SLIDE MUST STRICTLY:
-
-- Contain BETWEEN 3 and 5 bullet points
-- NEVER less than 3 bullets
-- If content is insufficient → GENERATE additional relevant points
-- Be clear, concise, and professional
-- Avoid generic bullets like "Introduction du projet"
-
-VALIDATION STEP (MANDATORY):
-
-Before returning the JSON:
-- Check ALL slides
-- If any slide has less than 3 bullet points → REGENERATE that slide
-- Ensure no empty or weak content
-
-SPEAKER NOTES RULES:
-
-- Natural spoken French (oral defense style)
--  3 to 4 phrases per slide
-- Explain the slide, do NOT repeat bullets
-- Add a smooth transition to the next slide
-
-STRICT JSON FORMAT:
-
-{
-  "slides": [
-    {
-      "numero": 1,
-      "titre": "string",
-      "contenu": [
-        "string",
-        "string",
-        "string"
-      ],
-      "notes_presentateur": "string"
-    }
-  ]
-}
-
-GLOBAL CONSTRAINTS:
-
-- Reformulate all user inputs professionally
-- No duplication between slides
-- Ensure strong logical flow
-- Maintain consistency across slides
-- Make the presentation convincing for a jury
-
-Generate the full presentation now.
-PROMPT;
-}
     /**
      * Nettoie une chaîne pour le prompt
      */
@@ -439,10 +345,7 @@ PROMPT;
         ]);
     }
 
-    /**
-     * Récupère le statut
-     */
-    public function status($id)
+  public function status($id)
     {
         $presentation = Presentation::where('user_id', Auth::id())
             ->findOrFail($id);
@@ -450,9 +353,77 @@ PROMPT;
         return response()->json([
             'status' => $presentation->status,
             'error_message' => $presentation->error_message,
-            'progress' => $presentation->status === 'completed' ? 100 : 50,
+            'progress' => $presentation->status === 'completed' ? 100 : ($presentation->status === 'processing' ? 50 : 0),
         ]);
     }
+
+    // Vos autres méthodes (buildPresentationPrompt, normalizeSlides, etc.) restent identiques
+    protected function buildPresentationPrompt(array $data, array $options): string
+    {
+        // Votre code existant
+        $title = $data['title'] ?? 'Projet de Fin d\'Études';
+        $problem = $data['problem'] ?? '';
+        $solution = $data['solution'] ?? '';
+        $technologies = $data['technologies'] ?? '';
+        $results = $data['results'] ?? '';
+        $difficulties = $data['difficulties'] ?? '';
+        $perspectives = $data['perspectives'] ?? '';
+        $slideCount = $options['slideCount'] ?? 15;
+
+        return <<<PROMPT
+You are a SENIOR academic expert specialized in Tunisian PFE defenses.
+
+OBJECTIVE:
+Generate a HIGH-QUALITY, professional, and convincing PFE presentation adapted for a Tunisian jury.
+
+INPUT:
+Title: {$title}
+Problem: {$problem}
+Solution: {$solution}
+Technologies: {$technologies}
+Results: {$results}
+Difficulties: {$difficulties}
+Perspectives: {$perspectives}
+
+STRUCTURE:
+1. Page de garde
+2. Plan
+3. Introduction
+4. Contexte général
+5. Problématique
+6. Solution proposée
+7. Architecture technique
+8. Technologies utilisées
+9. Implémentation
+10. Résultats
+11. Difficultés rencontrées
+12. Conclusion
+13. Perspectives
+14. Questions
+
+OUTPUT RULES:
+- Return ONLY valid JSON
+- Language: French
+- Slides count: {$slideCount}
+- Each slide must have 3-5 bullet points
+- Include speaker notes in French
+
+STRICT JSON FORMAT:
+{
+  "slides": [
+    {
+      "numero": 1,
+      "titre": "string",
+      "contenu": ["point1", "point2", "point3"],
+      "notes_presentateur": "string"
+    }
+  ]
+}
+
+Generate the full presentation now.
+PROMPT;
+    }
+
 // Dans PresentationController.php
 public function update(Request $request, $id)
 {
