@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use App\Models\User; // ← AJOUTEZ CETTE LIGNE
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use App\Jobs\GeneratePresentationJob;
@@ -41,120 +42,76 @@ public function index()
         'user' => $user
     ]);
 }
-    /**
-     * Génère une présentation à partir du formulaire
-     */
-
-    public function store(Request $request)
-    {
-        try {
-            $user = Auth::user();
-            
-            // Vérification des crédits (ACID avec transaction)
-            $canProceed = DB::transaction(function () use ($user) {
-                // Re-vérifier les crédits dans la transaction
-                $freshUser = User::where('id', $user->id)->lockForUpdate()->first();
-                
-                if ($freshUser->presentation_credits <= 0) {
-                    return false;
-                }
-                
-                // Déduire le crédit immédiatement
-                $freshUser->decrement('presentation_credits');
-                return true;
-            });
-            
-            if (!$canProceed) {
-                return response()->json([
-                    'success' => false,
-                    'error' => 'Vous n\'avez plus de crédits présentation.'
-                ], 403);
-            }
-            
-            Log::info('✅ Crédit déduit', [
-                'user_id' => $user->id,
-                'credits_restants' => $user->fresh()->presentation_credits
-            ]);
-            
-            // Validation
-            $validated = $request->validate([
-                'formData.title' => 'required|string|max:255',
-                'formData.projectType' => 'required|string',
-                'formData.problem' => 'required|string|min:20',
-                'formData.solution' => 'required|string|min:20',
-                'formData.technologies' => 'nullable|string',
-                'formData.results' => 'nullable|string',
-                'formData.difficulties' => 'nullable|string',
-                'formData.perspectives' => 'nullable|string',
-                'options.style' => 'required|string|in:modern,corporate,colorful',
-                'options.slideCount' => 'required|string',
-                'options.includeScript' => 'boolean',
-                'options.includeQuestions' => 'boolean',
-            ]);
-            
-            $formData = $validated['formData'];
-            $options = $validated['options'];
-            
-            // Créer la présentation
-            $presentation = Presentation::create([
-                'user_id' => $user->id,
-                'title' => $formData['title'],
-                'slug' => Str::slug($formData['title']) . '-' . Str::random(8),
-                'generation_method' => 'form',
-                'status' => 'pending',
-                'options' => $options,
-                'metadata' => json_encode([
-                    'created_at' => now()->toISOString(),
-                    'credits_used' => 1
-                ])
-            ]);
-            
-            // Construire le prompt
-            $prompt = $this->buildPresentationPrompt($formData, $options);
-            
-            // Dispatch le job sur la queue DATABASE
-            GeneratePresentationJob::dispatch(
-                $presentation->id,
-                $prompt,
-                $user->id
-            );
-            
-            Log::info('📬 Job dispatché dans database queue', [
-                'presentation_id' => $presentation->id,
-                'job_class' => GeneratePresentationJob::class
-            ]);
-            
-            // Réponse immédiate
-            return response()->json([
-                'success' => true,
-                'status' => 'pending',
-                'presentation_id' => $presentation->id,
-                'message' => 'Génération en cours... Vous serez notifié quand ce sera terminé.'
-            ]);
-            
-        } catch (\Illuminate\Validation\ValidationException $e) {
+public function store(Request $request)
+{
+    try {
+        $user = Auth::user();
+        
+        // ✅ SEULEMENT VÉRIFICATION, PAS DE DÉBIT
+        if ($user->presentation_credits <= 0) {
             return response()->json([
                 'success' => false,
-                'error' => 'Erreur de validation',
-                'errors' => $e->errors()
-            ], 422);
-        } catch (\Exception $e) {
-            Log::error('❌ Erreur store presentation', [
-                'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-            
-            // En cas d'erreur, rembourser le crédit
-            DB::transaction(function () use ($user) {
-                $user->increment('presentation_credits');
-            });
-            
-            return response()->json([
-                'success' => false,
-                'error' => 'Erreur serveur: ' . $e->getMessage()
-            ], 500);
+                'error' => 'Vous n\'avez plus de crédits présentation.'
+            ], 403);
         }
+        
+        // Validation
+        $validated = $request->validate([
+            'formData.title' => 'required|string|max:255',
+            'formData.projectType' => 'required|string',
+            'formData.problem' => 'required|string|min:20',
+            'formData.solution' => 'required|string|min:20',
+            'options.style' => 'required|string',
+            'options.slideCount' => 'required|string',
+        ]);
+        
+        $formData = $validated['formData'];
+        $options = $validated['options'];
+        
+        // Créer la présentation
+        $presentation = Presentation::create([
+            'user_id' => $user->id,
+            'title' => $formData['title'],
+            'slug' => Str::slug($formData['title']) . '-' . Str::random(8),
+            'generation_method' => 'form',
+            'status' => 'pending',
+            'options' => $options,
+            'metadata' => json_encode([
+                'created_at' => now()->toISOString(),
+                'queue_queued_at' => now()->toISOString()
+            ])
+        ]);
+        
+        // Construire le prompt
+        $prompt = $this->buildPresentationPrompt($formData, $options);
+        
+        // Dispatch le job (le débit se fera dans le job)
+        GeneratePresentationJob::dispatch($presentation->id, $prompt, $user->id);
+        
+        Log::info('📬 Job dispatché', [
+            'presentation_id' => $presentation->id,
+            'user_credits' => $user->presentation_credits
+        ]);
+        
+        return response()->json([
+            'success' => true,
+            'status' => 'pending',
+            'presentation_id' => $presentation->id,
+            'message' => 'Génération en cours...'
+        ]);
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Erreur store presentation', [
+            'message' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        
+        return response()->json([
+            'success' => false,
+            'error' => 'Erreur serveur: ' . $e->getMessage()
+        ], 500);
     }
+}
 
 
     /**
@@ -345,17 +302,50 @@ public function index()
         ]);
     }
 
-  public function status($id)
-    {
+ /**
+ * Vérifier le statut d'une présentation
+ */
+public function status($id)
+{
+    try {
         $presentation = Presentation::where('user_id', Auth::id())
             ->findOrFail($id);
             
-        return response()->json([
+        $response = [
             'status' => $presentation->status,
             'error_message' => $presentation->error_message,
-            'progress' => $presentation->status === 'completed' ? 100 : ($presentation->status === 'processing' ? 50 : 0),
-        ]);
+            'progress' => $this->getProgressPercentage($presentation->status),
+        ];
+        
+        // Ajouter les slides si la génération est terminée
+        if ($presentation->status === 'completed') {
+            $response['slides_count'] = count($presentation->content ?? []);
+            $response['content'] = $presentation->content;
+        }
+        
+        return response()->json($response);
+        
+    } catch (\Exception $e) {
+        return response()->json([
+            'error' => 'Présentation non trouvée',
+            'status' => 'not_found'
+        ], 404);
     }
+}
+
+/**
+ * Calculer le pourcentage de progression
+ */
+private function getProgressPercentage(string $status): int
+{
+    return match($status) {
+        'pending' => 10,
+        'processing' => 50,
+        'completed' => 100,
+        'failed' => 0,
+        default => 0
+    };
+}
 
     // Vos autres méthodes (buildPresentationPrompt, normalizeSlides, etc.) restent identiques
     protected function buildPresentationPrompt(array $data, array $options): string
@@ -406,7 +396,12 @@ OUTPUT RULES:
 - Language: French
 - Slides count: {$slideCount}
 - Each slide must have 3-5 bullet points
-- Include speaker notes in French
+- Include speaker notes in French 
+SPEAKER NOTES:
+- Must be written in French
+- Expand on slide content (do NOT repeat bullet points)
+- Should help the presenter speak naturally and confidently
+- Include explanations, transitions, or examples when relevant
 
 STRICT JSON FORMAT:
 {

@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Auth;
 use App\Models\Presentation;
 use App\Models\JurySimulation;
 use Inertia\Inertia;
+use Illuminate\Support\Facades\Cache; 
+use App\Jobs\GenerateQuestionsJob; 
 
 class JurySimulationController extends Controller
 {
@@ -49,8 +51,9 @@ class JurySimulationController extends Controller
     /***presnetation comrend  */
 
 
-  // Dans JurySimulationController.php
-
+/**
+ * API: Générer des questions avec l'IA
+ */
 public function generateQuestions(Request $request)
 {
     $request->validate([
@@ -58,41 +61,58 @@ public function generateQuestions(Request $request)
         'jury_type' => 'required|integer|in:1,2,3'
     ]);
     
-    // ✅ PAS de with('slides') - juste la présentation
     $presentation = Presentation::where('id', $request->presentation_id)
         ->where('user_id', Auth::id())
         ->firstOrFail();
     
-    // ✅ Le contenu est déjà dans $presentation->content
-    $prompt = $this->buildPromptWithExistingContent($presentation, $request->jury_type);
+    // Utiliser Cache avec le bon namespace
+    $cacheKey = "jury_questions_{$presentation->id}_{$request->jury_type}_" . Auth::id();
     
-    try {
-        $response = $this->openAIService->analyzePresentation($prompt);
-        
-        if (isset($response['questions']) && is_array($response['questions'])) {
-            return response()->json([
-                'success' => true,
-                'questions' => $response['questions']
-            ]);
-        }
-        
+    // Vérifier si déjà en cache
+    $cached = Cache::get($cacheKey);
+    
+    if ($cached && $cached['status'] === 'completed') {
         return response()->json([
-            'success' => false,
-            'message' => 'Format de réponse invalide',
-            'questions' => $this->getDefaultQuestions($request->jury_type)
-        ]);
-        
-    } catch (\Exception $e) {
-        \Log::error('Erreur génération questions: ' . $e->getMessage());
-        
-        return response()->json([
-            'success' => false,
-            'message' => 'Erreur API, utilisation des questions par défaut',
-            'questions' => $this->getDefaultQuestions($request->jury_type)
+            'success' => true,
+            'questions' => $cached['questions'],
+            'from_cache' => true
         ]);
     }
+    
+    // Dispatch le job
+    GenerateQuestionsJob::dispatch(
+        $presentation->id,
+        $request->jury_type,
+        Auth::id()
+    );
+    
+    return response()->json([
+        'success' => true,
+        'status' => 'processing',
+        'message' => 'Génération des questions en cours...',
+        'cache_key' => $cacheKey
+    ]);
 }
 
+/**
+ * Vérifier le statut de génération des questions
+ */
+public function getQuestionsStatus(Request $request)
+{
+    $request->validate([
+        'cache_key' => 'required|string'
+    ]);
+    
+    $cached = Cache::get($request->cache_key);
+    
+    if (!$cached) {
+        return response()->json([
+            'status' => 'pending'
+        ]);
+    }
+    
+    return response()->json($cached);
+}
 /**
  * Construction du prompt en utilisant le champ content existant
  */
@@ -587,6 +607,12 @@ private function formatPresentationContent($content)
  * API: Analyser une réponse avec l'IA
  * POST /api/jury/analyze-answer
  */
+// Dans JurySimulationController.php
+
+/**
+ * API: Analyser une réponse avec l'IA
+ * POST /jury/analyze-answer
+ */
 public function analyzeAnswer(Request $request)
 {
     $request->validate([
@@ -595,27 +621,51 @@ public function analyzeAnswer(Request $request)
         'jury_type' => 'required|integer',
         'presentation_id' => 'required|exists:presentations,id',
         'question_category' => 'nullable|string',
-        'question_difficulty' => 'nullable|string'
+        'question_difficulty' => 'nullable|string',
+        // Ces champs deviennent optionnels
+        'simulation_id' => 'nullable|exists:jury_simulations,id',
+        'question_index' => 'nullable|integer'
     ]);
 
-    // Récupérer la présentation sélectionnée
-    $presentation = Presentation::findOrFail($request->presentation_id);
-
-    // Construire le prompt pour l'IA
-    $prompt = $this->buildAnalysisPrompt(
-        $presentation,
-        $request->question,
-        $request->answer,
-        $request->jury_type,
-        $request->question_category ?? 'Général'
-    );
-
     try {
-        // Appeler OpenAI via ton service
+        $presentation = Presentation::findOrFail($request->presentation_id);
+        
+        $prompt = $this->buildAnalysisPrompt(
+            $presentation,
+            $request->question,
+            $request->answer,
+            $request->jury_type,
+            $request->question_category ?? 'Général'
+        );
+        
         $response = $this->openAIService->analyzePresentation($prompt);
         
         if (isset($response['score'])) {
             $feedback = $this->normalizeFeedback($response);
+            
+            // Si simulation_id est fourni, sauvegarder le résultat
+            if ($request->has('simulation_id') && $request->simulation_id) {
+                $simulation = JurySimulation::find($request->simulation_id);
+                if ($simulation) {
+                    $answers = $simulation->answers ?? [];
+                    $feedbacks = $simulation->feedbacks ?? [];
+                    $index = $request->question_index ?? count($answers);
+                    
+                    $answers[$index] = [
+                        'question' => $request->question,
+                        'answer' => $request->answer,
+                        'feedback' => $feedback,
+                        'analyzed_at' => now()->toISOString()
+                    ];
+                    
+                    $feedbacks[$index] = $feedback;
+                    
+                    $simulation->update([
+                        'answers' => $answers,
+                        'feedbacks' => $feedbacks
+                    ]);
+                }
+            }
             
             return response()->json([
                 'success' => true,
@@ -626,15 +676,37 @@ public function analyzeAnswer(Request $request)
         throw new \Exception('Réponse IA invalide');
         
     } catch (\Exception $e) {
-        \Log::error('Analyse réponse échouée: ' . $e->getMessage());
+        \Log::error('Erreur analyse: ' . $e->getMessage());
         
-        // Fallback: retourner un feedback mocké
         return response()->json([
             'success' => true,
             'feedback' => $this->generateFallbackFeedback($request->answer),
             'fallback' => true
         ]);
     }
+}
+
+// Nouvelle route pour récupérer le résultat
+public function getAnalysisResult($simulationId, $questionIndex)
+{
+    $simulation = JurySimulation::where('user_id', Auth::id())
+        ->findOrFail($simulationId);
+    
+    $answers = $simulation->answers ?? [];
+    $result = $answers[$questionIndex] ?? null;
+    
+    if ($result && isset($result['analyzed_at'])) {
+        return response()->json([
+            'success' => true,
+            'feedback' => $result['feedback'],
+            'completed' => true
+        ]);
+    }
+    
+    return response()->json([
+        'success' => true,
+        'completed' => false
+    ]);
 }
 
 /**

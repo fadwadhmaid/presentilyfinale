@@ -1,185 +1,187 @@
 <?php
+// app/Jobs/GeneratePresentationJob.php
 
 namespace App\Jobs;
 
 use App\Models\Presentation;
 use App\Models\User;
 use App\Services\OpenAIService;
-use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class GeneratePresentationJob implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable, InteractsWithQueue, SerializesModels;
 
-    public int $tries = 3;
-    public int $timeout = 300;
-    public int $backoff = 10;
+    public $timeout = 300;
+    public $tries = 3;
+    public $queue = 'presentations';
     
-    // ⚠️ SUPPRIMEZ cette ligne si vous l'avez :
-    // public $queue = 'default';
-    
-    // Gardez uniquement ces propriétés
-    protected int $presentationId;
-    protected string $prompt;
-    protected int $userId;
+    protected $presentationId;
+    protected $prompt;
+    protected $userId;
 
     public function __construct(int $presentationId, string $prompt, int $userId)
     {
         $this->presentationId = $presentationId;
         $this->prompt = $prompt;
         $this->userId = $userId;
+        
+        // Log dans le constructeur
+        Log::info('🔧 Job instancié', [
+            'presentation_id' => $presentationId,
+            'user_id' => $userId,
+            'prompt_length' => strlen($prompt)
+        ]);
     }
 
     public function handle(OpenAIService $openAIService): void
     {
-        $presentation = Presentation::find($this->presentationId);
-        
-        if (!$presentation) {
-            Log::error("Présentation non trouvée", ['id' => $this->presentationId]);
-            return;
-        }
+        Log::info('🎬 Job handle() début', [
+            'presentation_id' => $this->presentationId,
+            'attempt' => $this->attempts()
+        ]);
 
         try {
-            Log::info("🚀 Job commence: Génération pour présentation #{$this->presentationId}");
+            // Récupérer la présentation
+            Log::info('📝 Recherche de la présentation...');
+            $presentation = Presentation::find($this->presentationId);
             
-            $presentation->update(['status' => 'processing']);
-
-            // Appel à l'IA
-            $result = $openAIService->generateContent($this->prompt);
-            
-            Log::info("📝 Réponse OpenAI reçue", [
-                'type' => gettype($result),
-                'presentation_id' => $this->presentationId
-            ]);
-
-            // Nettoyage et parsing de la réponse
-            $slides = $this->parseOpenAIResponse($result);
-            
-            if (empty($slides)) {
-                throw new \Exception("Aucune slide valide générée par l'IA");
+            if (!$presentation) {
+                throw new \Exception("Présentation {$this->presentationId} non trouvée");
             }
-
-            // Normaliser les slides
-            $normalizedSlides = $this->normalizeSlides($slides);
+            Log::info('✅ Présentation trouvée', ['status' => $presentation->status]);
             
-            // Mise à jour de la présentation
-            $presentation->update([
-                'content' => $normalizedSlides,
-                'status' => 'completed',
-                'error_message' => null,
-                'metadata' => array_merge(
-                    json_decode($presentation->metadata ?? '{}', true),
-                    [
-                        'completed_at' => now()->toISOString(),
-                        'total_slides' => count($normalizedSlides)
-                    ]
-                )
+            // Récupérer l'utilisateur
+            Log::info('👤 Recherche de l\'utilisateur...');
+            $user = User::find($this->userId);
+            
+            if (!$user) {
+                throw new \Exception("Utilisateur {$this->userId} non trouvé");
+            }
+            Log::info('✅ Utilisateur trouvé', ['credits' => $user->presentation_credits]);
+            
+            // Vérifier les crédits
+            if ($user->presentation_credits <= 0) {
+                throw new \Exception("Crédits insuffisants: {$user->presentation_credits}");
+            }
+            
+            // Mettre à jour le statut
+            Log::info('🟡 Mise à jour du statut vers processing...');
+            $presentation->update(['status' => 'processing']);
+            Log::info('✅ Statut mis à jour');
+            
+            // Appel API (ça peut prendre du temps)
+            Log::info('🤖 Appel API OpenAI...', [
+                'prompt_preview' => substr($this->prompt, 0, 200) . '...'
             ]);
             
-            Log::info("✅ Job terminé avec succès", [
+            $result = $openAIService->generateContent($this->prompt, [
+                'max_output_tokens' => 8000,
+            ]);
+            
+            Log::info('📦 Réponse API reçue', [
+                'success' => $result['success'] ?? false,
+                'has_content' => isset($result['content']),
+                'has_slides' => isset($result['content']['slides'])
+            ]);
+            
+            if (empty($result['content']['slides'])) {
+                throw new \Exception("L'API n'a pas retourné de slides valides");
+            }
+            
+            // Normaliser
+            Log::info('🎨 Normalisation des slides...');
+            $normalizedSlides = $this->normalizeSlides($result['content']);
+            Log::info('✅ Slides normalisées', ['count' => count($normalizedSlides)]);
+            
+            // Débiter le crédit
+            Log::info('💰 Débit du crédit...');
+            DB::transaction(function () use ($user, $presentation, $normalizedSlides) {
+                $freshUser = User::where('id', $user->id)->lockForUpdate()->first();
+                
+                if ($freshUser->presentation_credits <= 0) {
+                    throw new \Exception("Plus de crédits disponibles");
+                }
+                
+                $freshUser->decrement('presentation_credits');
+                
+                $presentation->update([
+                    'status' => 'completed',
+                    'content' => $normalizedSlides,
+                    'metadata' => array_merge(
+                        json_decode($presentation->metadata ?? '{}', true),
+                        [
+                            'total_slides' => count($normalizedSlides),
+                            'completed_at' => now()->toISOString(),
+                            'credits_used' => 1,
+                            'credits_deducted_at' => now()->toISOString()
+                        ]
+                    )
+                ]);
+            });
+            
+            Log::info('✅ Job terminé avec succès!', [
                 'presentation_id' => $this->presentationId,
                 'slides_count' => count($normalizedSlides)
             ]);
-
+            
         } catch (\Exception $e) {
-            Log::error("❌ Job échoué", [
+            Log::error('❌ ERREUR DANS LE JOB', [
                 'presentation_id' => $this->presentationId,
-                'error' => $e->getMessage(),
+                'error_message' => $e->getMessage(),
+                'error_file' => $e->getFile(),
+                'error_line' => $e->getLine(),
                 'trace' => $e->getTraceAsString()
             ]);
             
-            // Remettre le crédit à l'utilisateur si échec
-            DB::transaction(function () use ($presentation) {
-                $user = User::find($this->userId);
-                if ($user) {
-                    $user->increment('presentation_credits');
-                    Log::info("💰 Crédit remboursé à l'utilisateur", [
-                        'user_id' => $this->userId,
-                        'credits' => $user->presentation_credits
+            // Mettre à jour la présentation en échec
+            try {
+                $presentation = Presentation::find($this->presentationId);
+                if ($presentation) {
+                    $presentation->update([
+                        'status' => 'failed',
+                        'error_message' => $e->getMessage()
                     ]);
+                    Log::info('📝 Statut mis à jour vers failed');
                 }
-            });
+            } catch (\Exception $updateError) {
+                Log::error('❌ Erreur lors de la mise à jour du statut', [
+                    'error' => $updateError->getMessage()
+                ]);
+            }
             
-            $presentation->update([
-                'status' => 'failed',
-                'error_message' => $e->getMessage()
-            ]);
-            
-            // Relancer le job si nécessaire
-            if ($this->attempts() < 3) {
-                $this->release(60); // Réessayer dans 60 secondes
+            // Relancer si possible
+            if ($this->attempts() < $this->tries) {
+                Log::info('🔄 Relance du job', ['next_attempt' => $this->attempts() + 1]);
+                $this->release(30);
+            } else {
+                Log::error('💀 Job abandonné après 3 tentatives');
             }
         }
     }
-
-    /**
-     * Parse et nettoie la réponse OpenAI
-     */
-    private function parseOpenAIResponse($result): array
-    {
-        // Si c'est déjà un tableau
-        if (is_array($result) && isset($result['slides'])) {
-            return $result['slides'];
-        }
-        
-        // Si c'est une chaîne JSON
-        if (is_string($result)) {
-            // Nettoyer les marqueurs markdown
-            $cleaned = preg_replace('/```json\s*|\s*```/', '', $result);
-            $cleaned = preg_replace('/^```|```$/', '', $cleaned);
-            $decoded = json_decode($cleaned, true);
-            
-            if (json_last_error() === JSON_ERROR_NONE) {
-                return $decoded['slides'] ?? [];
-            }
-            
-            Log::warning("Échec du parsing JSON", ['error' => json_last_error_msg()]);
-        }
-        
-        return [];
-    }
-
-    /**
-     * Normalise les slides au format attendu par l'application
-     */
-    private function normalizeSlides(array $slides): array
+    
+    protected function normalizeSlides(array $content): array
     {
         $normalized = [];
+        $slides = $content['slides'] ?? [];
+        
+        if (empty($slides)) {
+            Log::warning('Aucune slide dans la réponse', ['content' => array_keys($content)]);
+            throw new \Exception("Aucune slide générée");
+        }
         
         foreach ($slides as $index => $slide) {
-            // S'assurer que le contenu est un tableau
-            $content = $slide['contenu'] ?? $slide['content'] ?? [];
-            if (is_string($content)) {
-                $content = explode("\n", $content);
-            }
-            
-            // Nettoyer chaque point
-            $cleanedContent = [];
-            foreach ($content as $point) {
-                $point = trim($point);
-                $point = ltrim($point, '•-* ');
-                if (!empty($point) && strlen($point) > 2) {
-                    $cleanedContent[] = $point;
-                }
-            }
-            
-            // Si moins de 3 points, ajouter des points génériques
-            while (count($cleanedContent) < 3) {
-                $cleanedContent[] = "Point à développer lors de la présentation";
-            }
-            
             $normalized[] = [
                 'slide_number' => $slide['numero'] ?? ($index + 1),
-                'title' => $slide['titre'] ?? $slide['title'] ?? "Slide " . ($index + 1),
-                'content' => $cleanedContent,
-                'speaker_notes' => $slide['notes_presentateur'] ?? $slide['speaker_notes'] ?? "Développez ce point de manière claire et structurée.",
-                'subtitle' => $slide['sous_titre'] ?? ''
+                'title' => $slide['titre'] ?? "Slide " . ($index + 1),
+                'subtitle' => $slide['sous_titre'] ?? '',
+                'content' => is_array($slide['contenu'] ?? []) ? $slide['contenu'] : [$slide['contenu'] ?? ''],
+                'speaker_notes' => $slide['notes_presentateur'] ?? "Développez ce point."
             ];
         }
         

@@ -617,14 +617,88 @@ const startProgressSimulation = () => {
     }, 800);
 };
 
-// Génération
-// Modifiez la fonction generatePresentation
+// Ajoutez cette fonction
+// Modifiez l'URL pour correspondre à votre route
+const checkGenerationStatus = () => {
+    if (!generatedPresentationId.value) return;
+    
+    const interval = setInterval(async () => {
+        try {
+            // Essayez d'abord avec /api/presentation-status
+            let response;
+            try {
+                response = await axios.get(`/api/presentation-status/${generatedPresentationId.value}`, {
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    withCredentials: true
+                });
+            } catch (error) {
+                // Si ça échoue, essayez sans /api
+                if (error.response?.status === 404) {
+                    response = await axios.get(`/presentation-status/${generatedPresentationId.value}`, {
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        withCredentials: true
+                    });
+                } else {
+                    throw error;
+                }
+            }
+            
+            console.log('Statut reçu:', response.data);
+            
+            if (response.data.status === 'completed') {
+                clearInterval(interval);
+                loadingProgress.value = 100;
+                loadingMessage.value = 'Présentation générée avec succès !';
+                generatedSlidesCount.value = response.data.slides_count || 0;
+                
+                setTimeout(() => {
+                    isGenerating.value = false;
+                    currentStep.value = 6;
+                }, 800);
+                
+            } else if (response.data.status === 'failed') {
+                clearInterval(interval);
+                throw new Error(response.data.error_message || 'Échec de la génération');
+                
+            } else if (response.data.status === 'processing') {
+                loadingProgress.value = 50;
+                loadingMessage.value = 'Génération en cours...';
+                
+            } else if (response.data.status === 'pending') {
+                loadingProgress.value = 10;
+                loadingMessage.value = 'En file d\'attente...';
+            }
+            
+        } catch (error) {
+            clearInterval(interval);
+            console.error('Erreur status check:', error);
+            
+            if (error.response?.status === 404) {
+                loadingMessage.value = 'Erreur: Présentation non trouvée';
+                setTimeout(() => {
+                    isGenerating.value = false;
+                    alert('La présentation n\'a pas pu être trouvée. Veuillez réessayer.');
+                }, 1000);
+            } else {
+                loadingMessage.value = 'Erreur de vérification du statut';
+                setTimeout(() => {
+                    isGenerating.value = false;
+                }, 1000);
+            }
+        }
+    }, 3000); // Vérifier toutes les 3 secondes
+};
 const generatePresentation = async () => {
     isGenerating.value = true;
     startProgressSimulation();
     
     try {
-        // Changement : utiliser la bonne route
         const response = await axios.post('/api/generate-presentation', {
             formData: formData.value,
             options: {
@@ -633,56 +707,20 @@ const generatePresentation = async () => {
                 includeScript: includeScript.value,
                 includeQuestions: includeQuestions.value
             }
-        }, { 
-            timeout: 120000,
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
-                'Accept': 'application/json'
-            }
         });
         
         if (response.data.success) {
-            loadingProgress.value = 100;
-            loadingMessage.value = 'Présentation générée avec succès !';
             generatedPresentationId.value = response.data.presentation_id;
-            generatedSlidesCount.value = response.data.slides_count;
-            
-            setTimeout(() => {
-                clearInterval(progressInterval);
-                currentStep.value = 6;
-                isGenerating.value = false;
-            }, 800);
+            // Commencer le polling
+            checkGenerationStatus();
         } else {
-            throw new Error(response.data.error || 'Échec de la génération');
+            throw new Error(response.data.error);
         }
-        
     } catch (error) {
         console.error('Erreur:', error);
-        
-        let errorMessage = 'Une erreur est survenue. Veuillez réessayer.';
-        
-        if (error.response?.data?.error) {
-            errorMessage = error.response.data.error;
-        } else if (error.response?.data?.details) {
-            errorMessage = error.response.data.details;
-        } else if (error.message) {
-            errorMessage = error.message;
-        }
-        
-        // Afficher plus de détails pour le débogage
-        if (error.response?.data) {
-            console.error('Détails de l\'erreur:', error.response.data);
-            errorMessage += ' Détails: ' + JSON.stringify(error.response.data);
-        }
-        
-        loadingMessage.value = 'Erreur: ' + errorMessage;
-        
-        setTimeout(() => {
-            alert('❌ ' + errorMessage);
-            isGenerating.value = false;
-            clearInterval(progressInterval);
-        }, 1000);
+        isGenerating.value = false;
+        clearInterval(progressInterval);
+        alert('Erreur: ' + (error.response?.data?.error || error.message));
     }
 };
 

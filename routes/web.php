@@ -73,12 +73,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
     
     // Présentations
     Route::post('/api/generate-presentation', [PresentationController::class, 'store']);
+        Route::get('/api/presentation-status/{id}', [PresentationController::class, 'status']);
     Route::post('/api/presentations/update/{id}', [PresentationController::class, 'update']);
     Route::get('/api/presentations/{id}', [PresentationController::class, 'getJson']);
     Route::get('/api/export-presentation/{id}', [PresentationController::class, 'export']);
     Route::get('/presentation/status/{id}', [PresentationController::class, 'status']);
     Route::get('/debug/presentation/{id}', [PresentationController::class, 'debugPresentation']);
     Route::get('/presentation/create', [PresentationController::class, 'create'])->name('presentation.create');
+Route::get('/presentation-status/{id}', [PresentationController::class, 'status'])->middleware('auth');
     Route::get('/presentation/{id}', [PresentationController::class, 'show']);
     Route::post('/presentations/{presentation}/add-slide', [PresentationController::class, 'addSlide'])->name('presentations.add-slide');
     Route::put('/presentations/{presentation}/update-slide/{slideNumber}', [PresentationController::class, 'updateSlide'])->name('presentations.update-slide');
@@ -92,9 +94,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     
     // Routes API (retournent du JSON) - À mettre POUR TOUTES les routes API
      Route::post('/jury/analyze-answer', [JurySimulationController::class, 'analyzeAnswer']);
+     Route::get('/api/jury/analysis-result/{simulationId}/{questionIndex}', 
+        [JurySimulationController::class, 'getAnalysisResult']);
     Route::get('/api/jury/simulations', [JurySimulationController::class, 'index']);
     Route::post('/api/jury/simulations', [JurySimulationController::class, 'store']);
     Route::post('/jury/generate-questions', [JurySimulationController::class, 'generateQuestions']);
+        Route::post('/jury/questions-status', [JurySimulationController::class, 'getQuestionsStatus']); 
     Route::post('/jury/analyze-answer', [JurySimulationController::class, 'analyzeAnswer']);
     Route::get('/api/jury/simulations/stats', [JurySimulationController::class, 'stats']);
     Route::get('/api/jury/simulations/{id}', [JurySimulationController::class, 'show']);

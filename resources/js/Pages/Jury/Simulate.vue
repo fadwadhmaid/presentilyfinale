@@ -417,7 +417,7 @@ const timerInterval = ref(null);
 const timerProgress = ref(100);
 const circumference = 2 * Math.PI * 28;
 const isTimerRunning = ref(false);
-
+const currentSimulationId = ref(null); // ← AJOUTEZ CETTE LIGNE
 // Question et réponse
 const currentQuestion = ref(null);
 const userAnswerText = ref('');
@@ -503,6 +503,7 @@ const currentJury = computed(() => {
 });
 
 // Dans simulate.vue - amélioration de la fonction startSimulation
+// Dans simulate.vue - améliorer startSimulation
 
 const startSimulation = async () => {
     simulationStarted.value = true;
@@ -519,36 +520,76 @@ const startSimulation = async () => {
     };
     
     try {
+        // 1. Lancer la génération asynchrone
         const response = await axios.post('/jury/generate-questions', {
             presentation_id: selectedPresentationId.value,
             jury_type: selectedJuryId.value
         });
         
-        if (response.data.success && response.data.questions?.length > 0) {
+        if (response.data.status === 'processing') {
+            // 2. Polling pour attendre les résultats
+            await pollForQuestions(response.data.cache_key);
+        } else if (response.data.questions) {
             generatedQuestions.value = response.data.questions;
             totalQuestions.value = generatedQuestions.value.length;
-            
-            // Log pour debug
-            console.log('Questions générées par l\'IA:', generatedQuestions.value);
-        } else {
-            throw new Error('Pas de questions IA valides');
+            loadQuestion();
         }
         
     } catch (error) {
         console.error("Erreur génération IA:", error);
         
-        // Fallback avec questions par défaut basées sur le jury
+        // Fallback immédiat
         const fallbackQuestions = getFallbackQuestions(selectedJuryId.value);
         generatedQuestions.value = fallbackQuestions;
         totalQuestions.value = fallbackQuestions.length;
+        loadQuestion();
         
-        // Notification à l'utilisateur
-        alert("Utilisation des questions par défaut. Vérifiez votre connexion API.");
+        alert("Utilisation des questions par défaut. L'IA n'est pas disponible.");
     }
-    
-    loadQuestion();
 };
 
+// Polling pour les questions
+const pollForQuestions = async (cacheKey) => {
+    let attempts = 0;
+    const maxAttempts = 30; // 30 * 2s = 60 secondes
+    
+    return new Promise((resolve, reject) => {
+        const interval = setInterval(async () => {
+            attempts++;
+            
+            try {
+                const response = await axios.post('/jury/questions-status', { cache_key: cacheKey });
+                
+                if (response.data.status === 'completed') {
+                    clearInterval(interval);
+                    generatedQuestions.value = response.data.questions;
+                    totalQuestions.value = generatedQuestions.value.length;
+                    loadQuestion();
+                    resolve();
+                } else if (response.data.status === 'failed') {
+                    clearInterval(interval);
+                    const fallbackQuestions = getFallbackQuestions(selectedJuryId.value);
+                    generatedQuestions.value = fallbackQuestions;
+                    totalQuestions.value = fallbackQuestions.length;
+                    loadQuestion();
+                    reject(new Error('Fallback utilisé'));
+                } else if (attempts >= maxAttempts) {
+                    clearInterval(interval);
+                    const fallbackQuestions = getFallbackQuestions(selectedJuryId.value);
+                    generatedQuestions.value = fallbackQuestions;
+                    totalQuestions.value = fallbackQuestions.length;
+                    loadQuestion();
+                    reject(new Error('Timeout'));
+                }
+            } catch (error) {
+                if (attempts >= maxAttempts) {
+                    clearInterval(interval);
+                    reject(error);
+                }
+            }
+        }, 2000);
+    });
+};
 // Questions de fallback basées sur le contexte de la présentation
 const getFallbackQuestions = (juryId) => {
     const fallbacks = {
@@ -633,52 +674,98 @@ const autoSubmitOnTimeout = () => {
 const submitAnswer = async () => {
     stopTimer();
     isProcessing.value = true;
-    
-    // Afficher un message de chargement
     currentFeedback.value = null;
     
     try {
-        // Appeler l'API d'analyse IA
+        // Appel direct à l'analyse - SANS simulation_id
         const response = await axios.post('/jury/analyze-answer', {
             question: currentQuestion.value.question,
             answer: userAnswerText.value,
             jury_type: selectedJuryId.value,
             presentation_id: selectedPresentationId.value,
-            question_category: currentQuestion.value.category,
-            question_difficulty: currentQuestion.value.difficulty
+            question_category: currentQuestion.value.category || 'Général',
+            question_difficulty: currentQuestion.value.difficulty || 'Moyen'
         });
+        
+        console.log('Réponse API:', response.data);
         
         if (response.data.success && response.data.feedback) {
             currentFeedback.value = response.data.feedback;
             allFeedbacks.value.push(currentFeedback.value);
             
-            // Afficher un message si c'est un fallback
-            if (response.data.fallback) {
-                console.warn('Utilisation du fallback local car l\'API IA n\'est pas disponible');
-                // Option: afficher une notification à l'utilisateur
-            }
+            userAnswers.value.push({
+                question: currentQuestion.value,
+                answer: userAnswerText.value,
+                feedback: currentFeedback.value,
+                score: response.data.feedback.score
+            });
+            
+            isProcessing.value = false;
         } else {
-            throw new Error('Réponse IA invalide');
+            throw new Error('Réponse invalide');
         }
         
     } catch (error) {
-        console.error('Erreur lors de l\'analyse:', error);
+        console.error('Erreur:', error);
         
-        // Fallback: utiliser le mock local
-        console.warn('Utilisation du fallback local');
+        if (error.response?.data?.errors) {
+            console.error('Erreurs validation:', error.response.data.errors);
+        }
+        
+        // Fallback local
         const fallbackFeedback = generateLocalFeedback(userAnswerText.value);
         currentFeedback.value = fallbackFeedback;
         allFeedbacks.value.push(fallbackFeedback);
+        
+        userAnswers.value.push({
+            question: currentQuestion.value,
+            answer: userAnswerText.value,
+            feedback: fallbackFeedback,
+            score: fallbackFeedback.score
+        });
+        
+        isProcessing.value = false;
+        
+        alert('Analyse locale utilisée (API non disponible)');
     }
+};
+
+// Fonction de polling pour les résultats
+const pollForAnalysisResult = async (simulationId, questionIndex) => {
+    let attempts = 0;
+    const maxAttempts = 30; // 30 * 2s = 60 secondes max
     
-    // Sauvegarder la réponse
-    userAnswers.value.push({
-        question: currentQuestion.value,
-        answer: userAnswerText.value,
-        feedback: currentFeedback.value
+    return new Promise((resolve, reject) => {
+        const interval = setInterval(async () => {
+            attempts++;
+            
+            try {
+                const response = await axios.get(`/api/jury/analysis-result/${simulationId}/${questionIndex}`);
+                
+                if (response.data.completed) {
+                    clearInterval(interval);
+                    currentFeedback.value = response.data.feedback;
+                    allFeedbacks.value.push(currentFeedback.value);
+                    
+                    userAnswers.value.push({
+                        question: currentQuestion.value,
+                        answer: userAnswerText.value,
+                        feedback: currentFeedback.value
+                    });
+                    isProcessing.value = false;
+                    resolve();
+                } else if (attempts >= maxAttempts) {
+                    clearInterval(interval);
+                    reject(new Error('Timeout - Utilisation du fallback'));
+                }
+            } catch (error) {
+                if (attempts >= maxAttempts) {
+                    clearInterval(interval);
+                    reject(error);
+                }
+            }
+        }, 2000);
     });
-    
-    isProcessing.value = false;
 };
 
 // Renommer generateFeedback en generateLocalFeedback (pour le fallback)
