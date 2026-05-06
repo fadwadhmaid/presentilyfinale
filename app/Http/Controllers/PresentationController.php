@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
-
+use App\Jobs\GeneratePresentationJob;
 class PresentationController extends Controller
 {
     protected OpenAIService $aiService;
@@ -44,33 +44,28 @@ public function index()
     /**
      * Génère une présentation à partir du formulaire
      */
-    public function store(Request $request)
+public function store(Request $request)
 {
     set_time_limit(120);
     ini_set('max_execution_time', 120);
-    
+
     try {
         $user = Auth::user();
-        
-        Log::info('🎬 Début génération présentation formulaire', [
+
+        Log::info('🎬 Début génération présentation (QUEUE)', [
             'user_id' => $user->id,
             'credits_avant' => $user->presentation_credits,
-            'timestamp' => now()->toISOString()
         ]);
-        
-        // Vérifier les crédits AVANT de commencer
+
+        // ❌ Vérification crédits
         if ($user->presentation_credits <= 0) {
-            Log::warning('Crédits insuffisants', [
-                'user_id' => $user->id,
-                'credits' => $user->presentation_credits
-            ]);
             return response()->json([
                 'success' => false,
-                'error' => 'Vous n\'avez plus de crédits présentation. Veuillez acheter des crédits.'
+                'error' => 'Vous n\'avez plus de crédits présentation.'
             ], 403);
         }
 
-        // Validation des données
+        // ✅ Validation
         $validated = $request->validate([
             'formData.title' => 'required|string|max:255',
             'formData.projectType' => 'required|string',
@@ -80,6 +75,7 @@ public function index()
             'formData.results' => 'nullable|string',
             'formData.difficulties' => 'nullable|string',
             'formData.perspectives' => 'nullable|string',
+
             'options.style' => 'required|string|in:modern,corporate,colorful',
             'options.slideCount' => 'required|string',
             'options.includeScript' => 'boolean',
@@ -88,62 +84,54 @@ public function index()
 
         $formData = $validated['formData'];
         $options = $validated['options'];
-        
-        // Créer la présentation (sans encore déduire le crédit)
+
+        // 🧠 1. Créer la présentation en mode pending
         $presentation = Presentation::create([
             'user_id' => $user->id,
             'title' => $formData['title'],
-            'slug' => Str::slug($formData['title']) . '-' . Str::random(8),
+            'slug' => \Illuminate\Support\Str::slug($formData['title']) . '-' . \Illuminate\Support\Str::random(8),
             'generation_method' => 'form',
             'status' => 'processing',
             'options' => $options,
         ]);
-        
-        Log::info('✅ Présentation créée', [
+
+        Log::info('📦 Présentation créée (QUEUE)', [
+            'presentation_id' => $presentation->id
+        ]);
+
+        // 🚀 2. DISPATCH JOB (IMPORTANT)
+        \App\Jobs\GeneratePresentationJob::dispatch(
+            $presentation->id,
+            $formData,
+            $options,
+            $user->id
+        );
+
+        // ⚡ 3. Réponse immédiate (PAS DE TIMEOUT)
+        return response()->json([
+            'success' => true,
+            'status' => 'processing',
             'presentation_id' => $presentation->id,
-            'credits_avant_generation' => $user->presentation_credits
+            'message' => 'Génération en cours...'
         ]);
-        
-        // Générer les slides
-        $result = $this->generateSlides($presentation, $formData, $options);
-        
-        // ✅ SI la génération a réussi, DÉDUIRE le crédit
-        if ($result['success'] === true) {
-            // DÉDUIRE UN CRÉDIT (après génération réussie)
-            $user->decrement('presentation_credits');
-            
-            Log::info(' Crédit déduit après génération réussie', [
-                'user_id' => $user->id,
-                'credits_apres' => $user->presentation_credits,
-                'presentation_id' => $presentation->id
-            ]);
-            
-            // Mettre à jour le compteur de présentations générées
-            $user->increment('total_presentations_generated');
-        }
-        
-        return response()->json($result);
-        
+
     } catch (\Illuminate\Validation\ValidationException $e) {
-        Log::error(' Erreur validation', [
-            'errors' => $e->errors()
-        ]);
+
         return response()->json([
             'success' => false,
             'error' => 'Erreur de validation',
             'errors' => $e->errors()
         ], 422);
-        
+
     } catch (\Exception $e) {
-        Log::error(' Erreur génération', [
-            'message' => $e->getMessage(),
-            'trace' => $e->getTraceAsString()
+
+        Log::error('❌ Erreur store presentation', [
+            'message' => $e->getMessage()
         ]);
-        
+
         return response()->json([
             'success' => false,
-            'error' => 'Une erreur est survenue. Veuillez réessayer.',
-            'details' => config('app.debug') ? $e->getMessage() : null
+            'error' => 'Erreur serveur'
         ], 500);
     }
 }
