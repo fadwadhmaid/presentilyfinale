@@ -1,5 +1,5 @@
 <template>
-    <Head title="Générer une présentation | presento" />
+    <Head title="Générer une présentation | presentily" />
     
     <AuthenticatedLayout>
         <template #default>
@@ -503,7 +503,7 @@
                 Génération en cours...
             </h3>
             <p class="text-gray-600 dark:text-gray-400 mb-4">
-                L'IA prépare votre présentation de soutenance
+                Presentily prépare votre présentation de soutenance
             </p>
             <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mb-4">
                 <div class="bg-gradient-to-r from-blue-600 to-indigo-600 h-2 rounded-full transition-all duration-500"

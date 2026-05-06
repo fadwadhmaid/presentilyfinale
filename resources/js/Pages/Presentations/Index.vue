@@ -1,5 +1,5 @@
 <template>
-    <Head title="Mes présentations | presento" />
+    <Head title="Mes présentations | presentily" />
     
     <AuthenticatedLayout>
         <template #default>

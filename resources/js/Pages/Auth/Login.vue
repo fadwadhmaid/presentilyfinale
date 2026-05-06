@@ -1,5 +1,5 @@
 <template>
-    <Head title="Connexion | presento" />
+    <Head title="Connexion | presentily" />
     
     <div class="min-h-screen bg-white dark:bg-gray-950 overflow-hidden">
         <!-- Navigation simplifiée -->
@@ -11,7 +11,7 @@
                             <div class="absolute inset-0 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 opacity-75 blur-md group-hover:opacity-100 transition-opacity"></div>
                             <span class="relative text-sm font-bold text-white">P</span>
                         </div>
-                        <span class="text-lg font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-400 bg-clip-text text-transparent">presento</span>
+                        <span class="text-lg font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-400 bg-clip-text text-transparent">presentily</span>
                     </a>
                     <a :href="route('register')" 
                        class="text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-all duration-300 hover:scale-105">
@@ -124,7 +124,7 @@
                                         Connexion
                                     </h2>
                                     <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                                        Nouveau sur presento ? 
+                                        Nouveau sur presentily ? 
                                         <a :href="route('register')" class="font-medium text-blue-600 hover:text-blue-500 transition-colors">
                                             Créer un compte
                                         </a>

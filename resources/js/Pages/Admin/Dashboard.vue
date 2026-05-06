@@ -269,13 +269,5 @@ const getTotalSales = () => {
 </script>
 
 <style scoped>
-/* Animation pour les cartes */
-.group:hover {
-    transform: translateY(-4px);
-}
 
-/* Transition pour le graphique */
-.group\/chart:hover div div {
-    transform: scaleY(1.02);
-}
 </style>

@@ -11,11 +11,11 @@ use App\Http\Controllers\OfferController;
 use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
 use App\Http\Controllers\Admin\OrderController as AdminOrderController;
 use App\Http\Controllers\Admin\UserController as AdminUserController;
-use App\Http\Controllers\Admin\OfferController as AdminOfferController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use App\Http\Controllers\PresentationController;
 use App\Http\Controllers\JurySimulationController;
+use App\Http\Controllers\CommentController;
 
 /*
 |--------------------------------------------------------------------------
@@ -25,7 +25,8 @@ use App\Http\Controllers\JurySimulationController;
 
 // Routes publiques
 Route::get('/', [LandingPageController::class, 'index'])->name('landing');
-
+Route::get('/api/comments', [CommentController::class, 'index']);
+Route::post('/api/comments', [CommentController::class, 'store']);
 // Routes d'authentification (guest)
 Route::middleware('guest')->group(function () {
     Route::get('register', [RegisterController::class, 'showRegistrationForm'])->name('register');
@@ -137,13 +138,13 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('admin')->name('admin.'
     Route::get('/utilisateurs/{user}', [AdminUserController::class, 'show'])->name('users.show');
     Route::post('/utilisateurs/{user}/add-credits', [AdminUserController::class, 'addCredits'])->name('users.add-credits');
     Route::post('/utilisateurs/{user}/toggle-admin', [AdminUserController::class, 'toggleAdmin'])->name('users.toggle-admin');
-    Route::get('/offres', [AdminOfferController::class, 'index'])->name('offers.index');
-    Route::get('/offres/create', [AdminOfferController::class, 'create'])->name('offers.create');
-    Route::post('/offres', [AdminOfferController::class, 'store'])->name('offers.store');
-    Route::get('/offres/{offer}/edit', [AdminOfferController::class, 'edit'])->name('offers.edit');
-    Route::put('/offres/{offer}', [AdminOfferController::class, 'update'])->name('offers.update');
-    Route::delete('/offres/{offer}', [AdminOfferController::class, 'destroy'])->name('offers.destroy');
-    Route::post('/offres/{offer}/toggle-status', [AdminOfferController::class, 'toggleStatus'])->name('offers.toggle-status');
+    Route::get('/offres', [OfferController::class, 'adminIndex'])->name('offers.index');
+    Route::get('/offres/create', [OfferController::class, 'adminCreate'])->name('offers.create');
+    Route::post('/offres', [OfferController::class, 'adminStore'])->name('offers.store');
+    Route::get('/offres/{offer}/edit', [OfferController::class, 'adminEdit'])->name('offers.edit');
+    Route::put('/offres/{offer}', [OfferController::class, 'adminUpdate'])->name('offers.update');
+    Route::delete('/offres/{offer}', [OfferController::class, 'adminDestroy'])->name('offers.destroy');
+    Route::post('/offres/{offer}/toggle-status', [OfferController::class, 'adminToggleStatus'])->name('offers.toggle-status');
     Route::get('/statistiques', [AdminDashboardController::class, 'statistics'])->name('statistics');
     Route::get('/rapports', [AdminDashboardController::class, 'reports'])->name('reports');
 });

@@ -1,5 +1,5 @@
 <template>
-    <Head title="Nos offres | presento" />
+    <Head title="Nos offres | presentily" />
     
     <div class="min-h-screen bg-white dark:bg-gray-950 overflow-hidden">
         <!-- Navigation -->
@@ -11,7 +11,7 @@
                             <div class="absolute inset-0 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 opacity-75 blur-md group-hover:opacity-100 transition-opacity"></div>
                             <span class="relative text-sm font-bold text-white">P</span>
                         </div>
-                        <span class="text-lg font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-400 bg-clip-text text-transparent">presento</span>
+                        <span class="text-lg font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-400 bg-clip-text text-transparent">presentily</span>
                     </a>
                     <div class="flex items-center gap-4">
                         <Link :href="route('dashboard')" 
@@ -244,7 +244,7 @@
                     </div>
 
                     <p class="text-center text-xs text-gray-500 dark:text-gray-400 mt-4">
-                        💡 L'activation est manuelle. Vous recevrez une confirmation par WhatsApp.
+                         L'activation est manuelle. Vous recevrez une confirmation par WhatsApp.
                     </p>
                 </div>
             </div>
@@ -274,7 +274,7 @@ const whatsappMessage = computed(() => {
     const userEmail = user.value?.email || 'non renseigné';
     const orderNumber = orderData.value?.order?.order_number || 'Généré à la validation';
     
-    return ` NOUVELLE COMMANDE PRESENTO \n\n` +
+    return ` NOUVELLE COMMANDE PRESENTILY \n\n` +
            ` Commande N°: ${orderNumber}\n` +
            ` Client: ${userName}\n` +
            ` Email: ${userEmail}\n` +

@@ -112,7 +112,7 @@ public function index()
             // DÉDUIRE UN CRÉDIT (après génération réussie)
             $user->decrement('presentation_credits');
             
-            Log::info('💰 Crédit déduit après génération réussie', [
+            Log::info(' Crédit déduit après génération réussie', [
                 'user_id' => $user->id,
                 'credits_apres' => $user->presentation_credits,
                 'presentation_id' => $presentation->id
@@ -125,7 +125,7 @@ public function index()
         return response()->json($result);
         
     } catch (\Illuminate\Validation\ValidationException $e) {
-        Log::error('❌ Erreur validation', [
+        Log::error(' Erreur validation', [
             'errors' => $e->errors()
         ]);
         return response()->json([
@@ -135,7 +135,7 @@ public function index()
         ], 422);
         
     } catch (\Exception $e) {
-        Log::error('❌ Erreur génération', [
+        Log::error(' Erreur génération', [
             'message' => $e->getMessage(),
             'trace' => $e->getTraceAsString()
         ]);
@@ -153,7 +153,7 @@ public function index()
      */
    protected function generateSlides(Presentation $presentation, array $formData, array $options): array
 {
-    Log::info('🚀 Génération des slides', ['presentation_id' => $presentation->id]);
+    Log::info('Génération des slides', ['presentation_id' => $presentation->id]);
     
     try {
         // Construction du prompt
@@ -192,7 +192,7 @@ public function index()
             ]
         ]);
         
-        Log::info('✅ Présentation générée avec succès', [
+        Log::info(' Présentation générée avec succès', [
             'presentation_id' => $presentation->id,
             'slides_count' => count($normalizedSlides)
         ]);
@@ -206,7 +206,7 @@ public function index()
         ];
         
     } catch (\Exception $e) {
-        Log::error('❌ Échec génération', [
+        Log::error(' Échec génération', [
             'presentation_id' => $presentation->id,
             'error' => $e->getMessage()
         ]);
@@ -217,7 +217,7 @@ public function index()
             'error_message' => $e->getMessage()
         ]);
         
-        // ❌ NE PAS incrémenter le crédit ici car il n'a pas encore été déduit
+        //  NE PAS incrémenter le crédit ici car il n'a pas encore été déduit
         // Le crédit sera conservé car on ne l'a pas encore déduit
         
         throw $e; // Propager l'exception pour que store() la capture
@@ -265,7 +265,7 @@ ACADEMIC EXPECTATIONS:
 - Use professional academic tone
 - Add realistic details if missing
 
-STRUCTURE (adapt if necessary but keep logical flow):
+STRUCTURE (if the project for a developer student keep this flow else adapt and keep logical flow):
 
 1. Page de garde
 2. Plan
@@ -298,7 +298,6 @@ EACH SLIDE MUST STRICTLY:
 - Contain BETWEEN 3 and 5 bullet points
 - NEVER less than 3 bullets
 - If content is insufficient → GENERATE additional relevant points
-- Each bullet must contain at least 6 words
 - Be clear, concise, and professional
 - Avoid generic bullets like "Introduction du projet"
 
@@ -312,7 +311,7 @@ Before returning the JSON:
 SPEAKER NOTES RULES:
 
 - Natural spoken French (oral defense style)
-- 2 to 4 sentences per slide
+-  3 to 4 phrases per slide
 - Explain the slide, do NOT repeat bullets
 - Add a smooth transition to the next slide
 

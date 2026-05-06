@@ -1,5 +1,5 @@
 <template>
-    <Head title="Vérification email | presento" />
+    <Head title="Vérification email | presentily" />
     
     <div class="min-h-screen bg-white dark:bg-gray-950 flex items-center justify-center p-4">
         <div class="max-w-md w-full">

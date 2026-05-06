@@ -1,5 +1,5 @@
 <template>
-    <Head title="Historique des simulations | presento" />
+    <Head title="Historique des simulations | presentily" />
     
     <AuthenticatedLayout>
         <template #default>

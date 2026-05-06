@@ -267,8 +267,7 @@
 import { reactive } from 'vue';
 import { router, usePage } from '@inertiajs/vue3';
 import { Link } from '@inertiajs/vue3';
-import AdminLayout from '../Layouts/AdminLayout.vue';
-
+import AdminLayout from '../Layouts/AdminLayout.vue';  // ← Chemin correct
 const props = defineProps({
     users: {
         type: Object,

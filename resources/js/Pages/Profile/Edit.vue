@@ -1,5 +1,5 @@
 <template>
-    <Head title="Mon profil | presento" />
+    <Head title="Mon profil | presentily" />
     
     <AuthenticatedLayout :user="user">
        

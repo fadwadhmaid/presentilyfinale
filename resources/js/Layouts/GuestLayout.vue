@@ -19,7 +19,7 @@
                     <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-white/20 backdrop-blur">
                         <span class="text-lg font-bold">P</span>
                     </div>
-                    <span class="text-lg font-semibold tracking-tight">presento</span>
+                    <span class="text-lg font-semibold tracking-tight">presentily</span>
                 </div>
 
                 <div class="my-auto max-w-md space-y-6">
@@ -43,7 +43,7 @@
 
                     <!-- Avis récent style "Twitter" -->
                     <div class="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm">
-                        <p class="text-sm italic">"Grâce à PRESENTO, j’ai eu 18/20 à mon mémoire. La simulation de jury m’a enlevé tout le stress."</p>
+                        <p class="text-sm italic">"Grâce à PRESENTILY, j’ai eu 18/20 à mon mémoire. La simulation de jury m’a enlevé tout le stress."</p>
                         <div class="mt-2 flex items-center gap-2"><div class="h-6 w-6 rounded-full bg-blue-500"></div><span class="text-xs font-medium">— Marie D. (Master Droit)</span></div>
                     </div>
                 </div>

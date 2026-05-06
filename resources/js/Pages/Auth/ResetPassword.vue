@@ -1,5 +1,5 @@
 <template>
-    <Head title="Réinitialisation du mot de passe | presento" />
+    <Head title="Réinitialisation du mot de passe | presentily" />
     
     <div class="min-h-screen bg-white dark:bg-gray-950 overflow-hidden">
         <nav class="fixed top-0 left-0 right-0 z-50 bg-white/95 dark:bg-gray-950/95 backdrop-blur-sm border-b border-gray-100 dark:border-gray-800">
@@ -10,7 +10,7 @@
                             <div class="absolute inset-0 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 opacity-75 blur-md group-hover:opacity-100 transition-opacity"></div>
                             <span class="relative text-sm font-bold text-white">P</span>
                         </div>
-                        <span class="text-lg font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-400 bg-clip-text text-transparent">presento</span>
+                        <span class="text-lg font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-400 bg-clip-text text-transparent">presentily</span>
                     </a>
                     <a :href="route('login')" class="text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-all duration-300 hover:scale-105">
                         Connexion

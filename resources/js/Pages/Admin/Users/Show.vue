@@ -197,7 +197,7 @@
                                             Voir détails →
                                         </button>
                                     </td>
-                                <tr>
+                                </tr>
                                 <tr v-if="orders.length === 0">
                                     <td colspan="6" class="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
                                         Aucune commande trouvée

@@ -1,6 +1,6 @@
 <template>
 
-    <Head title="Simulation Jury | presento" />
+    <Head title="Simulation Jury | presentily" />
 
     <AuthenticatedLayout>
         <template #default>
@@ -344,20 +344,20 @@
 
                             <!-- Analyse par catégorie -->
                             <div class="space-y-4 mb-8">
-                                <h3 class="font-semibold text-gray-900 dark:text-white">📈 Analyse détaillée</h3>
+                                <h3 class="font-semibold text-gray-900 dark:text-white"> Analyse détaillée</h3>
                                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                                     <div class="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 text-center">
-                                        <div class="text-3xl mb-2">💬</div>
+                                        <div class="text-3xl mb-2"></div>
                                         <div class="text-lg font-bold">{{ categoryScores.communication }}/20</div>
                                         <p class="text-sm text-gray-500">Communication</p>
                                     </div>
                                     <div class="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 text-center">
-                                        <div class="text-3xl mb-2">🔧</div>
+                                        <div class="text-3xl mb-2"></div>
                                         <div class="text-lg font-bold">{{ categoryScores.technique }}/20</div>
                                         <p class="text-sm text-gray-500">Maîtrise technique</p>
                                     </div>
                                     <div class="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 text-center">
-                                        <div class="text-3xl mb-2">🎯</div>
+                                        <div class="text-3xl mb-2"></div>
                                         <div class="text-lg font-bold">{{ categoryScores.confiance }}/20</div>
                                         <p class="text-sm text-gray-500">Confiance & aisance</p>
                                     </div>
@@ -367,11 +367,11 @@
                             <div class="flex gap-4">
                                 <button @click="restartSimulation"
                                     class="flex-1 py-3 border-2 border-blue-600 text-blue-600 rounded-xl hover:bg-blue-50 transition">
-                                    🔄 Nouvelle simulation
+                                     Nouvelle simulation
                                 </button>
                                 <button @click="returnToDashboard"
                                     class="flex-1 py-3 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-xl hover:shadow-lg transition">
-                                    📊 Retour au tableau de bord
+                                     Retour au tableau de bord
                                 </button>
                             </div>
                         </div>

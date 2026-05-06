@@ -7,9 +7,12 @@ use App\Models\Order;
 use App\Models\UserCredit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Inertia\Inertia; // Ajoutez cette ligne
 
 class OfferController extends Controller
 {
+    // ========== MÉTHODES EXISTANTES (Côté utilisateur) ==========
+    
     public function index()
     {
         $offers = Offer::where('is_active', true)
@@ -168,5 +171,130 @@ class OfferController extends Controller
             'free' => $freeCredits,
             'paid' => $paidCredits
         ];
+    }
+
+    // ========== NOUVELLES MÉTHODES ADMIN ==========
+    
+    /**
+     * Afficher la liste des offres (admin)
+     */
+    public function adminIndex()
+    {
+        $offers = Offer::orderBy('sort_order')->paginate(10);
+        
+        return Inertia::render('Admin/Offers/Index', [
+            'offers' => $offers
+        ]);
+    }
+    
+    /**
+     * Afficher le formulaire de création (admin)
+     */
+    public function adminCreate()
+    {
+        return Inertia::render('Admin/Offers/Create');
+    }
+    
+    /**
+     * Enregistrer une nouvelle offre (admin)
+     */
+    public function adminStore(Request $request)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'slug' => 'required|string|unique:offers,slug',
+            'description' => 'required|string',
+            'price' => 'required|numeric|min:0',
+            'features' => 'required|array',
+            'features.presentations' => 'integer|min:0',
+            'features.simulations' => 'integer|min:0',
+            'features.reformulations' => 'integer|min:0',
+            'is_active' => 'boolean',
+            'sort_order' => 'integer'
+        ]);
+        
+        // Convertir features en JSON si nécessaire
+        if (isset($validated['features'])) {
+            $validated['features'] = json_encode($validated['features']);
+        }
+        
+        Offer::create($validated);
+        
+        return redirect()->route('admin.offers.index')
+            ->with('success', 'Offre créée avec succès');
+    }
+    
+    /**
+     * Afficher le formulaire d'édition (admin)
+     */
+    public function adminEdit(Offer $offer)
+    {
+        // Décoder features si c'est du JSON
+        if (is_string($offer->features)) {
+            $offer->features = json_decode($offer->features, true);
+        }
+        
+        return Inertia::render('Admin/Offers/Edit', [
+            'offer' => $offer
+        ]);
+    }
+    
+    /**
+     * Mettre à jour une offre (admin)
+     */
+    public function adminUpdate(Request $request, Offer $offer)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'slug' => 'required|string|unique:offers,slug,' . $offer->id,
+            'description' => 'required|string',
+            'price' => 'required|numeric|min:0',
+            'features' => 'required|array',
+            'features.presentations' => 'integer|min:0',
+            'features.simulations' => 'integer|min:0',
+            'features.reformulations' => 'integer|min:0',
+            'is_active' => 'boolean',
+            'sort_order' => 'integer'
+        ]);
+        
+        // Convertir features en JSON si nécessaire
+        if (isset($validated['features'])) {
+            $validated['features'] = json_encode($validated['features']);
+        }
+        
+        $offer->update($validated);
+        
+        return redirect()->route('admin.offers.index')
+            ->with('success', 'Offre mise à jour avec succès');
+    }
+    
+    /**
+     * Supprimer une offre (admin)
+     */
+    public function adminDestroy(Offer $offer)
+    {
+        // Vérifier si l'offre a des commandes associées
+        if ($offer->orders()->exists()) {
+            return redirect()->route('admin.offers.index')
+                ->with('error', 'Impossible de supprimer cette offre car elle a des commandes associées');
+        }
+        
+        $offer->delete();
+        
+        return redirect()->route('admin.offers.index')
+            ->with('success', 'Offre supprimée avec succès');
+    }
+    
+    /**
+     * Activer/désactiver une offre (admin)
+     */
+    public function adminToggleStatus(Offer $offer)
+    {
+        $offer->update([
+            'is_active' => !$offer->is_active
+        ]);
+        
+        return redirect()->back()
+            ->with('success', 'Statut de l\'offre modifié avec succès');
     }
 }

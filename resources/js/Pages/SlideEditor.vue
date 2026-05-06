@@ -5,19 +5,19 @@
             <h3>Éditeur de slide</h3>
             <div class="slide-types">
                 <button @click="slideType = 'content'" :class="{ active: slideType === 'content' }">
-                    📝 Texte
+                     Texte
                 </button>
                 <button @click="slideType = 'image'" :class="{ active: slideType === 'image' }">
-                    🖼️ Image
+                    Image
                 </button>
                 <button @click="slideType = 'two-columns'" :class="{ active: slideType === 'two-columns' }">
-                    📊 Deux colonnes
+                    Deux colonnes
                 </button>
                 <button @click="slideType = 'quote'" :class="{ active: slideType === 'quote' }">
-                    💬 Citation
+                     Citation
                 </button>
                 <button @click="slideType = 'comparison'" :class="{ active: slideType === 'comparison' }">
-                    ⚖️ Comparaison
+                     Comparaison
                 </button>
             </div>
         </div>
@@ -92,8 +92,8 @@
         </div>
 
         <div class="editor-footer">
-            <button @click="saveSlide" class="btn-primary">💾 Sauvegarder</button>
-            <button @click="deleteSlide" class="btn-danger" v-if="editingSlide.id">🗑️ Supprimer</button>
+            <button @click="saveSlide" class="btn-primary">Sauvegarder</button>
+            <button @click="deleteSlide" class="btn-danger" v-if="editingSlide.id">Supprimer</button>
         </div>
     </div>
 </template>
