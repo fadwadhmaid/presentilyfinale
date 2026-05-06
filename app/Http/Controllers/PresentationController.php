@@ -99,13 +99,13 @@ public function store(Request $request)
             'presentation_id' => $presentation->id
         ]);
 
-        // 🚀 2. DISPATCH JOB (IMPORTANT)
-        \App\Jobs\GeneratePresentationJob::dispatch(
-            $presentation->id,
-            $formData,
-            $options,
-            $user->id
-        );
+ $prompt = $this->buildPresentationPrompt($formData, $options);
+
+GeneratePresentationJob::dispatch(
+    $presentation->id,
+    $prompt,
+    $user->id
+);
 
         // ⚡ 3. Réponse immédiate (PAS DE TIMEOUT)
         return response()->json([

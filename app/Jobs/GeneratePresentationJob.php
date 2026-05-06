@@ -55,11 +55,14 @@ class GeneratePresentationJob implements ShouldQueue
             // 🔹 3. appeler OpenAI
             $result = $openAIService->generateContent($this->prompt);
 
+// sécurité format
+$content = is_array($result) ? $result : json_decode($result, true);
+
             // 🔹 4. sauvegarder résultat
-            $presentation->update([
-                'content' => json_encode($result),
-                'status' => 'done'
-            ]);
+           $presentation->update([
+    'content' => $content,
+    'status' => 'completed'
+]);
 
         } catch (\Exception $e) {
 

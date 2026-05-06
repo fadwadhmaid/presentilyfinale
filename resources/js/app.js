@@ -4,7 +4,7 @@ import { createInertiaApp } from '@inertiajs/vue3';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import '../css/app.css';
 
-// Importer Ziggy
+// Importer Ziggyphp artisan optimize:clear
 import { ZiggyVue } from 'ziggy-js';
 
 createInertiaApp({
